@@ -51,6 +51,9 @@ class GigaChatClient:
             kwargs["auth_url"] = config.gigachat_auth_url
             kwargs["base_url"] = config.gigachat_base_url
             kwargs["verify_ssl_certs"] = config.gigachat_verify_ssl
+            # Добавляем параметры генерации для более естественных ответов
+            kwargs["temperature"] = config.gigachat_temperature
+            kwargs["top_p"] = config.gigachat_top_p
         else:
             # На случай если конфигурация прошла валидацию, но ни один режим
             # не активен (не должно случаться).

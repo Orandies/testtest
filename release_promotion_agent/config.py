@@ -83,6 +83,9 @@ class Config(BaseModel):
     gigachat_auth_url: str | None = None
     gigachat_base_url: str = "https://gigachat.devices.sberbank.ru/api/v1/"
     gigachat_verify_ssl: bool = False
+    # Параметры генерации для более естественных ответов
+    gigachat_temperature: float = 0.7
+    gigachat_top_p: float = 0.9
 
     # ── Уведомления в чат (необязательно) ─────────────────────────────
     sberchat_webhook_token: SecretStr | None = None
@@ -258,12 +261,28 @@ class Config(BaseModel):
                 source.get("VERIFY_SSL", "false").lower() == "true"
                 or source.get("GIGACHAT_VERIFY_SSL", "false").lower() == "true"
             )
+            # Параметры генерации для более естественных ответов
+            temperature_raw = source.get("GIGACHAT_TEMPERATURE", "0.7")
+            try:
+                temperature = float(temperature_raw)
+            except ValueError:
+                temperature = 0.7
+                problems.append(f"GIGACHAT_TEMPERATURE должно быть числом, используется {temperature}")
+            
+            top_p_raw = source.get("GIGACHAT_TOP_P", "0.9")
+            try:
+                top_p = float(top_p_raw)
+            except ValueError:
+                top_p = 0.9
+                problems.append(f"GIGACHAT_TOP_P должно быть числом, используется {top_p}")
         else:
             raw_scope = None
             model = None
             auth_url = None
             base_url = None
             verify_ssl = False
+            temperature = 0.7
+            top_p = 0.9
 
         # ── Выбор режима ───────────────────────────────────────────────
         if not has_cert and not has_key and not has_creds:
@@ -331,6 +350,9 @@ class Config(BaseModel):
             if base_url
             else Config.model_fields["gigachat_base_url"].default,
             gigachat_verify_ssl=verify_ssl,
+            # Параметры генерации
+            gigachat_temperature=temperature,
+            gigachat_top_p=top_p,
             # Уведомления в чат (необязательно)
             sberchat_webhook_token=(SecretStr(webhook_token) if webhook_token else None),
             # SberChat бот
