@@ -7,6 +7,7 @@
     chat          интерактивный режим с GigaChat (по умолчанию)
     bot           запустить SberChat-бота (webhook + gRPC)
     git           Git-агент для выполнения операций через текстовые команды
+    console       консольный бот для анализа Confluence и работы с SourceControl через MCP
 
 Команда demo не обращается к внешним системам: SourceControl, модель и
 инженер заменены заглушками из release_promotion_agent.cli.demo. Она
@@ -22,6 +23,7 @@ from rich.console import Console
 from rich.table import Table
 
 from release_promotion_agent.agents.chat_agent import ChatAgent
+from release_promotion_agent.cli.console_bot import main as console_bot_main
 from release_promotion_agent.cli.demo import run_demo_session
 from release_promotion_agent.cli.git_cli import git_app
 from release_promotion_agent.config import Config
@@ -250,6 +252,25 @@ def bot() -> None:
         asyncio.run(main())
     except KeyboardInterrupt:
         _console.print("\n[yellow]Остановка бота...[/yellow]")
+
+
+@app.command("console")
+def console() -> None:
+    """Запустить консольного бота для анализа Confluence и работы с SourceControl.
+    
+    Процесс работы:
+    1. Пользователь отправляет текст или ссылку на Confluence
+    2. Бот анализирует содержимое и пишет краткую сводку действий
+    3. Ждёт подтверждения от пользователя
+    4. Если подтверждено -> спрашивает ветку для изменений
+    5. Делает коммиты и пушит изменения в SourceControl через MCP
+    
+    Для работы необходимы:
+      - GIGACHAT_CREDENTIALS или mTLS сертификаты
+      - SOURCECONTROL_BASE_URL и SOURCECONTROL_TOKEN (для записи)
+      - CONFLUENCE_BASE_URL и CONFLUENCE_TOKEN (для чтения страниц)
+    """
+    console_bot_main()
 
 
 def main() -> None:
