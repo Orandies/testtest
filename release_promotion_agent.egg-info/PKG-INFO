@@ -1,0 +1,24 @@
+Metadata-Version: 2.4
+Name: release-promotion-agent
+Version: 0.1.0
+Summary: Агент подготовки релизных изменений конфигов через pull request
+Requires-Python: >=3.11
+Requires-Dist: httpx
+Requires-Dist: pydantic>=2
+Requires-Dist: ruamel.yaml
+Requires-Dist: typer
+Requires-Dist: rich
+Requires-Dist: gigachat
+Requires-Dist: langchain>=1.3
+Requires-Dist: langchain-gigachat>=0.5
+Requires-Dist: python-dotenv
+Requires-Dist: beautifulsoup4
+Requires-Dist: atlassian-python-api
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: import-linter; extra == "dev"
+Requires-Dist: pre-commit; extra == "dev"
+Provides-Extra: sberchat
+Requires-Dist: sber-sberchat-bot-sdk; extra == "sberchat"
