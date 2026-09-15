@@ -1,9 +1,19 @@
 ```
 # Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.ENV
+.python-version
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -21,20 +31,22 @@ wheels/
 .installed.cfg
 *.egg
 
-# Logs
-*.log
-
 # Environment
 .env
 .env.local
 .env.*
-.venv/
-venv/
-ENV/
+!.env.example
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
 ```
