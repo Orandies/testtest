@@ -1,7 +1,0 @@
-{
-  "files": [
-    {"path": "config/ift/application.yaml", "status": "modified"},
-    {"path": "config/ift/feature-flags.yaml", "status": "added"},
-    {"path": "config/ift/legacy.yaml", "status": "removed"}
-  ]
-}
