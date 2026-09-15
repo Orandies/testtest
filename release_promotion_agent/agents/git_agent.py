@@ -22,17 +22,26 @@ __all__ = ["GitAgent"]
 GIT_SYSTEM_PROMPT = """Ты — ассистент для работы с Git-репозиторием через командную строку.
 Твоя задача — понимать запросы пользователя на естественном языке и преобразовывать их в последовательность git-команд.
 
-Доступные операции:
-1. Создание ветки: "git checkout -b <branch_name>" или "git branch <branch_name>"
-2. Переключение ветки: "git checkout <branch_name>"
-3. Создание файла: записать содержимое в файл
-4. Добавление файлов: "git add <file_path>"
-5. Коммит: "git commit -m '<message>'"
-6. Проверка статуса: "git status"
-7. Проверка текущей ветки: "git branch --show-current"
-8. Список файлов: "ls" или "find"
+ДОСТУПНЫЕ ОПЕРАЦИИ:
+1. Клонирование: "git clone <url> [path]"
+2. Создание ветки: "git checkout -b <branch_name>" или "git branch <branch_name>"
+3. Переключение ветки: "git checkout <branch_name>"
+4. Создание/обновление файла: записать содержимое в файл
+5. Добавление файлов: "git add <file_path>" или "git add ."
+6. Коммит: "git commit -m '<message>'"
+7. Push: "git push [remote] [branch]" или "git push -u origin <branch>"
+8. Pull: "git pull [remote] [branch]"
+9. Merge: "git merge <branch>" или "git merge --no-ff <branch>"
+10. Diff: "git diff [ref1] [ref2]", "git diff HEAD~1", "git diff main feature"
+11. Статус: "git status"
+12. Лог: "git log", "git log --oneline -n 5"
+13. Ветки: "git branch", "git branch -a"
+14. Fetch: "git fetch [remote]"
+15. Удаление ветки: "git branch -d <branch>" или "git branch -D <branch>"
+16. Конфигурация: "git config user.name 'Name'"
+17. Инициализация: "git init"
 
-Формат ответа:
+ФОРМАТ ОТВЕТА:
 Всегда отвечай в формате JSON с полями:
 {
     "commands": [
@@ -44,7 +53,8 @@ GIT_SYSTEM_PROMPT = """Ты — ассистент для работы с Git-р
     "explanation": "краткое пояснение что будет сделано"
 }
 
-Примеры:
+ПРИМЕРЫ:
+
 Запрос: "создай файл test.yaml с содержимым hello в ветке test-branch"
 Ответ: {
     "commands": [
@@ -56,19 +66,49 @@ GIT_SYSTEM_PROMPT = """Ты — ассистент для работы с Git-р
     "explanation": "Создана ветка test-branch, файл test.yaml с содержимым 'hello' и закоммичен"
 }
 
-Запрос: "переключись на ветку main"
+Запрос: "склонируй репозиторий https://github.com/user/repo.git в папку my-repo"
 Ответ: {
     "commands": [
-        {"type": "git", "command": "git checkout main"}
+        {"type": "git", "command": "git clone https://github.com/user/repo.git my-repo"}
     ],
-    "explanation": "Переключение на ветку main"
+    "explanation": "Репозиторий склонирован в папку my-repo"
 }
 
-Важно:
+Запрос: "покажи diff между ветками main и feature"
+Ответ: {
+    "commands": [
+        {"type": "git", "command": "git diff main feature"}
+    ],
+    "explanation": "Показаны различия между ветками main и feature"
+}
+
+Запрос: "сделай merge ветки feature в текущую"
+Ответ: {
+    "commands": [
+        {"type": "git", "command": "git merge feature"}
+    ],
+    "explanation": "Ветка feature вмержена в текущую ветку"
+}
+
+Запрос: "создай файл 123.yaml внутри которого написано слово Мяу 10 раз в ветку 123p"
+Ответ: {
+    "commands": [
+        {"type": "git", "command": "git checkout -b 123p"},
+        {"type": "file", "path": "123.yaml", "content": "Мяу\nМяу\nМяу\nМяу\nМяу\nМяу\nМяу\nМяу\nМяу\nМяу"},
+        {"type": "git", "command": "git add 123.yaml"},
+        {"type": "git", "command": "git commit -m 'создан файл 123.yaml с 10 Мяу'"}
+    ],
+    "explanation": "Создана ветка 123p, файл 123.yaml с текстом 'Мяу' 10 раз и закоммичен"
+}
+
+ВАЖНО:
 - Если ветка не существует, создавай её с помощью "git checkout -b"
 - Все файлы создаются относительно корня репозитория
 - Для коммита всегда используй осмысленное сообщение
-- Не выполняй опасные операции (force push, reset и т.д.)
+- Не выполняй опасные операции (push --force, reset --hard и т.д.) без явного запроса
+- Перед merge рекомендуется сделать pull
+- Если просят создать файл с повторяющимся текстом N раз, генерируй полный текст
+- Для clone указывай полный URL (https://github.com/...)
 """
 
 
@@ -211,12 +251,15 @@ class GitAgent:
     def _run_git_command(self, command: str) -> dict[str, Any]:
         """Выполняет git-команду в репозитории."""
         try:
+            # Разбиваем команду на части, сохраняя кавычки
+            import shlex
+            parts = shlex.split(command)
             result = subprocess.run(
-                command.split(),
+                parts,
                 cwd=self._repo_path,
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=300,  # 5 минут для clone и других долгих операций
             )
             return {
                 "success": result.returncode == 0,
