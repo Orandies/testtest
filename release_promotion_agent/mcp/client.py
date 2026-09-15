@@ -54,6 +54,7 @@ class MCPClient:
         cert_file: Path | str,
         key_file: Path | str,
         tuz: str = "SA-S0000000000",
+        ca_bundle: Path | str | None = None,
         timeout_seconds: float = 30.0,
     ) -> None:
         """Инициализация MCP-клиента.
@@ -63,6 +64,7 @@ class MCPClient:
             cert_file: Путь к файлу сертификата (из SecMan)
             key_file: Путь к файлу приватного ключа (из SecMan)
             tuz: Идентификатор ТУЗ (учётной записи сервиса)
+            ca_bundle: Путь к CA bundle для проверки сервера (опционально)
             timeout_seconds: Таймаут запросов в секундах
         """
         self.server_url = server_url.rstrip("/")
@@ -76,13 +78,21 @@ class MCPClient:
             keyfile=str(key_file),
         )
         
+        # Если указан CA bundle, используем его для проверки сервера
+        if ca_bundle is not None:
+            ssl_context.load_verify_locations(cafile=str(ca_bundle))
+        else:
+            # Используем стандартные корневые сертификаты
+            ssl_context.load_verify_locations()
+        
+        # Создаем транспорт с поддержкой mTLS
+        transport = httpx.HTTPTransport(verify=ssl_context)
+        
         self._client = httpx.Client(
             base_url=self.server_url,
             timeout=httpx.Timeout(timeout_seconds),
-            verify=True,
+            transport=transport,
         )
-        # Для mTLS нужно настроить transport отдельно
-        # Пока используем стандартный подход httpx
         
         self._tools_cache: list[MCPTool] | None = None
     

@@ -60,19 +60,24 @@ class ConsoleBot:
         """Инициализация MCP клиента."""
         # Для MCP нужны сертификат и ключ из SecMan
         # В production они приходят через переменные окружения
-        cert_file = config.gigachat_cert_file
-        key_file = config.gigachat_key_file
+        # Используем SOURCECONTROL_CERT_FILE и SOURCECONTROL_KEY_FILE
+        cert_file = config.sourcecontrol_cert_file
+        key_file = config.sourcecontrol_key_file
         
         if cert_file is None or key_file is None:
-            # Пробуем использовать токен как альтернативу
-            logger.info("mTLS не настроен, пробуем token-based аутентификацию")
-            return
+            # Если нет сертификатов для SourceControl, пробуем использовать GigaChat сертификаты
+            cert_file = config.gigachat_cert_file
+            key_file = config.gigachat_key_file
+            
+            if cert_file is None or key_file is None:
+                logger.info("mTLS не настроен - ни SOURCECERT_* ни GIGACHAT_* сертификаты не найдены")
+                return
         
         self.mcp_client = MCPClient(
             server_url=config.sourcecontrol_base_url or "",
             cert_file=cert_file,
             key_file=key_file,
-            tuz="SA-S0000000000",  # ТУЗ по умолчанию
+            tuz=config.sourcecontrol_tuz,
         )
     
     def run(self) -> None:
