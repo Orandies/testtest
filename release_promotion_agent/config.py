@@ -55,6 +55,12 @@ class Config(BaseModel):
     # Опционально: нужно только для orchestrator-режима.
     sourcecontrol_base_url: str | None = None
     sourcecontrol_token: SecretStr | None = None
+    # ТУЗ (учётная запись сервиса) для MCP-подключения
+    sourcecontrol_tuz: str = "SA-S0000000000"
+    # Сертификат и ключ для mTLS подключения к MCP-серверу (из SecMan)
+    sourcecontrol_cert_file: Path | None = None
+    sourcecontrol_key_file: Path | None = None
+
 
     # ── Confluence ─────────────────────────────────────────────────────
     # Опционально: нужно только для orchestrator-режима.
@@ -216,6 +222,15 @@ class Config(BaseModel):
         # Опциональные параметры SourceControl (только для orchestrator-режима).
         sc_base = source.get("SOURCECONTROL_BASE_URL", "").rstrip("/") or None
         sc_token = source.get("SOURCECONTROL_TOKEN") or None
+        sc_tuz = source.get("SOURCECONTROL_TUZ", "SA-S0000000000").strip() or "SA-S0000000000"
+        sc_cert_raw = source.get("SOURCECONTROL_CERT_FILE", "").strip()
+        sc_key_raw = source.get("SOURCECONTROL_KEY_FILE", "").strip()
+        sc_cert = Path(sc_cert_raw) if sc_cert_raw else None
+        sc_key = Path(sc_key_raw) if sc_key_raw else None
+        if sc_cert is not None and not sc_cert.is_file():
+            problems.append(f"SOURCECONTROL_CERT_FILE: файл не найден: {sc_cert}")
+        if sc_key is not None and not sc_key.is_file():
+            problems.append(f"SOURCECONTROL_KEY_FILE: файл не найден: {sc_key}")
 
         # Список пользователей задаётся через запятую. Историческое имя
         # переменной с префиксом AKK_ продолжает работать: у части инженеров
@@ -330,6 +345,9 @@ class Config(BaseModel):
             # SourceControl (опционально)
             sourcecontrol_base_url=sc_base,
             sourcecontrol_token=SecretStr(sc_token) if sc_token else None,
+            sourcecontrol_tuz=sc_tuz,
+            sourcecontrol_cert_file=sc_cert,
+            sourcecontrol_key_file=sc_key,
             # Confluence (опционально)
             confluence_base_url=conf_base,
             confluence_token=SecretStr(conf_token) if conf_token else None,
