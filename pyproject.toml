@@ -1,0 +1,128 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "release-promotion-agent"
+version = "0.1.0"
+description = "Агент подготовки релизных изменений конфигов через pull request"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx",
+    "pydantic>=2",
+    "ruamel.yaml",
+    "typer",
+    "rich",
+    "gigachat",
+    "langchain>=1.3",
+    "langchain-gigachat>=0.5",
+    "python-dotenv",
+    "beautifulsoup4",
+    "atlassian-python-api",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "import-linter",
+    "pre-commit",
+]
+sberchat = [
+    "sber-sberchat-bot-sdk",
+]
+
+[tool.setuptools.packages.find]
+include = ["release_promotion_agent*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+# Ограничения на связи между модулями. Проверяются линтером, а не
+# договорённостями: нарушение видно на этапе проверки кода.
+#
+# Имена модулей — фактические. После объединения веток пакет устроен так:
+#   cli, sberchat_bot   интерфейсы
+#   agents              оркестратор релизного сценария и диалоговый агент
+#   analyzers           анализ diff, намерение, сверка
+#   tools               выходы во внешние системы: SourceControl, Confluence
+#   llm                 клиент модели
+#   validation          детерминированная проверка кандидатов
+#   core                FSM, контекст, ошибки, аудит, логирование
+[tool.importlinter]
+root_package = "release_promotion_agent"
+include_external_packages = true
+
+# Проверяющий код не должен зависеть от кода, чьи результаты он проверяет.
+[[tool.importlinter.contracts]]
+name = "validation ни от кого не зависит"
+type = "forbidden"
+source_modules = ["release_promotion_agent.validation"]
+forbidden_modules = [
+    "release_promotion_agent.agents",
+    "release_promotion_agent.analyzers",
+    "release_promotion_agent.cli",
+    "release_promotion_agent.llm",
+    "release_promotion_agent.sberchat_bot",
+    "release_promotion_agent.tools",
+]
+
+# Фундамент не знает о том, что на нём стоит.
+[[tool.importlinter.contracts]]
+name = "core не зависит от остальных модулей"
+type = "forbidden"
+source_modules = ["release_promotion_agent.core"]
+forbidden_modules = [
+    "release_promotion_agent.agents",
+    "release_promotion_agent.analyzers",
+    "release_promotion_agent.cli",
+    "release_promotion_agent.llm",
+    "release_promotion_agent.sberchat_bot",
+    "release_promotion_agent.tools",
+    "release_promotion_agent.validation",
+]
+
+# Рабочие модули общаются только через оркестратор (agents.release_agent).
+# Транзитивные цепочки вида cli -> agents -> analyzers разрешены:
+# это и есть задуманная структура.
+[[tool.importlinter.contracts]]
+name = "рабочие модули не вызывают друг друга напрямую"
+type = "forbidden"
+allow_indirect_imports = true
+source_modules = [
+    "release_promotion_agent.analyzers",
+    "release_promotion_agent.llm",
+    "release_promotion_agent.sberchat_bot",
+    "release_promotion_agent.tools",
+]
+forbidden_modules = [
+    "release_promotion_agent.analyzers",
+    "release_promotion_agent.llm",
+    "release_promotion_agent.sberchat_bot",
+    "release_promotion_agent.tools",
+]
+
+# Единственное исключение из правила выше — llm может обращаться к
+# validation, чтобы проверять собственный результат.
+[[tool.importlinter.contracts]]
+name = "к validation обращается только llm"
+type = "forbidden"
+allow_indirect_imports = true
+source_modules = [
+    "release_promotion_agent.analyzers",
+    "release_promotion_agent.sberchat_bot",
+    "release_promotion_agent.tools",
+]
+forbidden_modules = ["release_promotion_agent.validation"]

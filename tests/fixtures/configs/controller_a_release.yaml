@@ -1,0 +1,15 @@
+# Синтетический конфиг контроллера — версия релизной ветки (head)
+server:
+  port: 8080
+  timeout-seconds: 60
+integration:
+  retries: 3
+  endpoints:
+    - https://service-a.invalid
+    - https://service-b.invalid
+    - https://service-c.invalid
+  circuit-breaker:
+    enabled: true
+features: {}
+logging:
+  level: INFO
