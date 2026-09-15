@@ -6,6 +6,7 @@
     demo          прогон сценария целиком на подставных данных
     chat          интерактивный режим с GigaChat (по умолчанию)
     bot           запустить SberChat-бота (webhook + gRPC)
+    git           Git-агент для выполнения операций через текстовые команды
 
 Команда demo не обращается к внешним системам: SourceControl, модель и
 инженер заменены заглушками из release_promotion_agent.cli.demo. Она
@@ -22,6 +23,7 @@ from rich.table import Table
 
 from release_promotion_agent.agents.chat_agent import ChatAgent
 from release_promotion_agent.cli.demo import run_demo_session
+from release_promotion_agent.cli.git_cli import git_app
 from release_promotion_agent.config import Config
 from release_promotion_agent.core import audit_chain
 from release_promotion_agent.core.errors import ConfigError
@@ -35,6 +37,9 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 _console = Console()
+
+# Добавляем Git-агент как подкоманду
+app.add_typer(git_app, name="git")
 
 
 @app.command("check-config")
