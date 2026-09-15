@@ -55,9 +55,12 @@ class Config(BaseModel):
     # Опционально: нужно только для orchestrator-режима.
     sourcecontrol_base_url: str | None = None
     sourcecontrol_token: SecretStr | None = None
-    # ТУЗ (учётная запись сервиса) для MCP-подключения
+    # Project Key и Repo Slug для прямого доступа к API (например, из ID репозитория SA-SDVP00001234)
+    sourcecontrol_project_key: str | None = None
+    sourcecontrol_repo_slug: str | None = None
+    # ТУЗ (учётная запись сервиса) для MCP-подключения (устарело, используется только токен)
     sourcecontrol_tuz: str = "SA-S0000000000"
-    # Сертификат и ключ для mTLS подключения к MCP-серверу (из SecMan)
+    # Сертификат и ключ для mTLS подключения к MCP-серверу (из SecMan) - устарело
     sourcecontrol_cert_file: Path | None = None
     sourcecontrol_key_file: Path | None = None
 
@@ -222,6 +225,13 @@ class Config(BaseModel):
         # Опциональные параметры SourceControl (только для orchestrator-режима).
         sc_base = source.get("SOURCECONTROL_BASE_URL", "").rstrip("/") or None
         sc_token = source.get("SOURCECONTROL_TOKEN") or None
+        # Project Key и Repo Slug извлекаются из ID репозитория или задаются отдельно
+        # Формат ID: SA-SDVP00001234 -> project_key=SA-SDVP00001234, repo_slug=<имя_репозитория>
+        # Если repo_slug не задан, используем project_key как repo_slug по умолчанию
+        sc_project_key = source.get("SOURCECONTROL_PROJECT_KEY") or None
+        sc_repo_slug = source.get("SOURCECONTROL_REPO_SLUG") or None
+        
+        # Устаревшие параметры mTLS (больше не используются)
         sc_tuz = source.get("SOURCECONTROL_TUZ", "SA-S0000000000").strip() or "SA-S0000000000"
         sc_cert_raw = source.get("SOURCECONTROL_CERT_FILE", "").strip()
         sc_key_raw = source.get("SOURCECONTROL_KEY_FILE", "").strip()
@@ -345,6 +355,8 @@ class Config(BaseModel):
             # SourceControl (опционально)
             sourcecontrol_base_url=sc_base,
             sourcecontrol_token=SecretStr(sc_token) if sc_token else None,
+            sourcecontrol_project_key=sc_project_key,
+            sourcecontrol_repo_slug=sc_repo_slug or sc_project_key,  # Если slug не задан, используем project_key
             sourcecontrol_tuz=sc_tuz,
             sourcecontrol_cert_file=sc_cert,
             sourcecontrol_key_file=sc_key,

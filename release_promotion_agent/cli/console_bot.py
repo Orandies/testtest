@@ -23,7 +23,7 @@ from rich.panel import Panel
 
 from release_promotion_agent.config import Config
 from release_promotion_agent.agents.chat_agent import ChatAgent
-from release_promotion_agent.mcp import MCPClient
+from release_promotion_agent.core.sourcecontrol_direct import SourceControlDirectClient
 from release_promotion_agent.tools.confluence_tool import read_confluence_url
 
 logger = logging.getLogger(__name__)
@@ -42,42 +42,29 @@ class ConsoleBot:
         
         self.config = config
         self.chat_agent = ChatAgent(config)
-        self.mcp_client: MCPClient | None = None
+        self.sc_client: SourceControlDirectClient | None = None
         
-        # Проверяем наличие MCP конфигурации
-        self._has_mcp = (
+        # Проверяем наличие конфигурации для прямого доступа к Source Control
+        self._has_sc = (
             config.sourcecontrol_base_url is not None
             and config.sourcecontrol_token is not None
+            and config.sourcecontrol_project_key is not None
+            and config.sourcecontrol_repo_slug is not None
         )
         
-        if self._has_mcp:
+        if self._has_sc:
             try:
-                self._init_mcp_client(config)
+                self._init_sc_client(config)
             except Exception as exc:
-                logger.warning("MCP клиент не инициализирован: %s", exc)
+                logger.warning("Source Control клиент не инициализирован: %s", exc)
     
-    def _init_mcp_client(self, config: Config) -> None:
-        """Инициализация MCP клиента."""
-        # Для MCP нужны сертификат и ключ из SecMan
-        # В production они приходят через переменные окружения
-        # Используем SOURCECONTROL_CERT_FILE и SOURCECONTROL_KEY_FILE
-        cert_file = config.sourcecontrol_cert_file
-        key_file = config.sourcecontrol_key_file
-        
-        if cert_file is None or key_file is None:
-            # Если нет сертификатов для SourceControl, пробуем использовать GigaChat сертификаты
-            cert_file = config.gigachat_cert_file
-            key_file = config.gigachat_key_file
-            
-            if cert_file is None or key_file is None:
-                logger.info("mTLS не настроен - ни SOURCECERT_* ни GIGACHAT_* сертификаты не найдены")
-                return
-        
-        self.mcp_client = MCPClient(
-            server_url=config.sourcecontrol_base_url or "",
-            cert_file=cert_file,
-            key_file=key_file,
-            tuz=config.sourcecontrol_tuz,
+    def _init_sc_client(self, config: Config) -> None:
+        """Инициализация клиента Source Control через PAT-токен."""
+        self.sc_client = SourceControlDirectClient(
+            base_url=config.sourcecontrol_base_url,
+            token=config.sourcecontrol_token,
+            project_key=config.sourcecontrol_project_key,
+            repo_slug=config.sourcecontrol_repo_slug,
         )
     
     def run(self) -> None:
@@ -94,10 +81,10 @@ class ConsoleBot:
             console.print("[red]GigaChat не настроен. Укажите GIGACHAT_CREDENTIALS или mTLS.[/red]")
             return
         
-        if self._has_mcp:
-            console.print("[green]✓ MCP подключён к SourceControl[/green]")
+        if self._has_sc:
+            console.print("[green]✓ Source Control подключён через PAT-токен[/green]")
         else:
-            console.print("[yellow]⚠ MCP не настроен - только анализ без записи[/yellow]")
+            console.print("[yellow]⚠ Source Control не настроен - только анализ без записи[/yellow]")
         
         console.print("\n[dim]Введите запрос > [/dim]", end="")
         
@@ -170,8 +157,8 @@ class ConsoleBot:
         console.print("[green]✓ План подтверждён[/green]")
         
         # Шаг 5: Спрашиваем ветку для изменений
-        if self.mcp_client is None:
-            console.print("[yellow]⚠ MCP клиент не подключён - пропускаем запись[/yellow]")
+        if self.sc_client is None:
+            console.print("[yellow]⚠ Source Control клиент не подключён - пропускаем запись[/yellow]")
             return
         
         branch_name = self._ask_branch_name()
@@ -179,7 +166,7 @@ class ConsoleBot:
             console.print("[red]✗ Ветка не указана - отмена[/red]")
             return
         
-        # Шаг 6: Выполняем изменения через MCP
+        # Шаг 6: Выполняем изменения через Source Control API
         console.print(f"\n[cyan]🔧 Выполнение изменений в ветке {branch_name}...[/cyan]")
         
         try:
@@ -253,7 +240,7 @@ class ConsoleBot:
             return None
     
     def _execute_changes(self, branch_name: str, plan: str) -> str:
-        """Выполнить изменения через MCP клиент.
+        """Выполнить изменения через Source Control API.
         
         Args:
             branch_name: Имя ветки для изменений
@@ -262,79 +249,47 @@ class ConsoleBot:
         Returns:
             Строка с результатом выполнения
         """
-        if self.mcp_client is None:
-            raise RuntimeError("MCP клиент не подключён")
+        if self.sc_client is None:
+            raise RuntimeError("Source Control клиент не подключён")
         
-        # Парсим план и выполняем действия
-        # Это упрощённая реализация - в production нужен полноценный парсер
+        # Получаем информацию о репозитории
+        repo_info = self.sc_client.get_repository_info()
+        default_branch = repo_info.get("default_branch", "refs/heads/master").replace("refs/heads/", "")
         
-        # Пример: создание ветки
-        # repo_key нужно определить из контекста или спросить у пользователя
-        repo_key = self._ask_repo_key()
-        
-        # Создаём ветку если нужно
-        branches = self.mcp_client.get_list_branches(repo_key)
+        # Проверяем существование ветки
+        branches = self.sc_client.get_list_branches(limit=100)
         branch_exists = any(b.get("name") == branch_name for b in branches)
         
         if not branch_exists:
-            console.print(f"[dim]Создание ветки {branch_name}...[/dim]")
-            self.mcp_client.create_branch(
-                repo_key=repo_key,
-                branch_name=branch_name,
-                from_ref="main",  # Или спросить у пользователя
+            console.print(f"[dim]Создание ветки {branch_name} из {default_branch}...[/dim]")
+            self.sc_client.create_branch(
+                name=branch_name,
+                from_branch=default_branch,
             )
         
         # Применяем изменения из плана
-        # Здесь должна быть логика парсинга плана и вызова соответствующих MCP инструментов
-        # Для демонстрации - создаём тестовый файл
+        # Для демонстрации создаём файл с описанием изменений
+        # В production здесь должен быть парсер плана и реальные изменения
         
         console.print("[dim]Применение изменений...[/dim]")
         
-        # Пример изменения файла
         test_file_path = "changes.md"
-        test_content = f"# Изменения по плану\n\n{plan}"
+        test_content = f"# Изменения по плану\n\n{plan}\n\nАвтоматически создано ботом."
         
-        result = self.mcp_client.create_or_update_file(
-            repo_key=repo_key,
-            branch=branch_name,
-            file_path=test_file_path,
+        result = self.sc_client.create_or_update_file(
+            path=test_file_path,
             content=test_content,
             message=f"Apply changes: {plan[:50]}...",
+            branch=branch_name,
         )
         
-        commit_id = result.get("commit_id", "unknown")
+        commit_id = result.get("id", "unknown")
         
-        # Создаём pull request
-        console.print("[dim]Создание pull request...[/dim]")
-        
-        pr_result = self.mcp_client.create_pull_request(
-            repo_key=repo_key,
-            source_branch=branch_name,
-            target_branch="main",
-            title=f"Changes: {plan[:50]}...",
-            body=f"Автоматически созданный PR\n\nПлан изменений:\n{plan}",
-        )
-        
-        pr_url = pr_result.get("url", "")
-        
-        return f"Committed: {commit_id}, PR: {pr_url}"
+        return f"Committed: {commit_id}, Branch: {branch_name}"
     
     def _ask_repo_key(self) -> str:
-        """Спросить ключ репозитория."""
-        # В production можно получить список репозиториев и показать пользователю
-        if self.mcp_client:
-            try:
-                # Получаем информацию о репозитории
-                # Для упрощения используем hardcoded значение или спрашиваем
-                pass
-            except Exception:
-                pass
-        
-        try:
-            repo = input("[bold]Ключ репозитория?[/bold] > ").strip()
-            return repo if repo else "default-repo"
-        except (EOFError, KeyboardInterrupt):
-            return "default-repo"
+        """Спросить ключ репозитория (заглушка, т.к. репозиторий уже задан в конфиге)."""
+        return self.config.sourcecontrol_repo_slug or "default-repo"
 
 
 def main() -> None:
