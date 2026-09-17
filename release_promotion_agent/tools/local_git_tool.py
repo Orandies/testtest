@@ -3,6 +3,10 @@
 Предоставляет методы для выполнения всех git-команд: clone, diff, merge,
 checkout, commit, push, pull и других. Использует subprocess для вызова
 системной утилиты git.
+
+Поддерживает аутентификацию через HTTPS с использованием логина и пароля
+(или токена вместо пароля) из переменных окружения BITBUCKET_USERNAME и
+BITBUCKET_PASSWORD.
 """
 
 from __future__ import annotations
@@ -12,6 +16,12 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse, urlunparse
+
+from dotenv import load_dotenv
+
+# Загружаем переменные окружения из .env файла
+load_dotenv()
 
 
 @dataclass
@@ -28,6 +38,14 @@ class LocalGitClient:
     
     Поддерживает все основные git-команды: clone, diff, merge, checkout,
     commit, push, pull, branch, status, log и другие.
+    
+    Для аутентификации в удалённых репозиториях (Bitbucket и др.) используются
+    переменные окружения:
+      - BITBUCKET_USERNAME: логин пользователя
+      - BITBUCKET_PASSWORD: пароль или HTTP access token
+    
+    При клонировании HTTPS URL автоматически преобразуется в формат с учётными
+    данными для аутентификации.
     """
 
     def __init__(self, repo_path: str | None = None):
@@ -38,6 +56,45 @@ class LocalGitClient:
                       будут выполняться в текущей директории.
         """
         self.repo_path = Path(repo_path) if repo_path else None
+        
+        # Загружаем учётные данные для аутентификации
+        self._username = os.getenv("BITBUCKET_USERNAME")
+        self._password = os.getenv("BITBUCKET_PASSWORD")
+        self._has_credentials = bool(self._username and self._password)
+        
+    def _add_credentials_to_url(self, url: str) -> str:
+        """Добавляет учётные данные в HTTPS URL для аутентификации.
+        
+        Args:
+            url: Исходный URL репозитория.
+            
+        Returns:
+            URL с добавленными учётными данными в формате https://username:password@host/path,
+            или исходный URL, если учётные данные не настроены или URL не HTTPS.
+        """
+        if not self._has_credentials:
+            return url
+            
+        try:
+            parsed = urlparse(url)
+            # Добавляем credentials только для HTTPS URL
+            if parsed.scheme in ("https", "http"):
+                # Формируем netloc с учётными данными
+                netloc = f"{self._username}:{self._password}@{parsed.netloc}"
+                # Собираем URL обратно
+                return urlunparse((
+                    parsed.scheme,
+                    netloc,
+                    parsed.path,
+                    parsed.params,
+                    parsed.query,
+                    parsed.fragment
+                ))
+        except Exception:
+            # В случае ошибки парсинга возвращаем исходный URL
+            pass
+            
+        return url
         
     def _run_git(
         self,
@@ -100,13 +157,16 @@ class LocalGitClient:
         """Клонирует репозиторий.
         
         Args:
-            url: URL репозитория (HTTPS или SSH).
+            url: URL репозитория (HTTPS или SSH). Для HTTPS URL автоматически
+                добавляются учётные данные из BITBUCKET_USERNAME и BITBUCKET_PASSWORD.
             target_path: Путь для клонирования. Если None, используется имя из URL.
             
         Returns:
             GitResult с результатом операции.
         """
-        args = ["clone", url]
+        # Добавляем учётные данные в URL для аутентификации
+        auth_url = self._add_credentials_to_url(url)
+        args = ["clone", auth_url]
         if target_path:
             args.append(target_path)
         return self._run_git(*args, cwd=None)
